@@ -1,0 +1,23 @@
+# Environment variables — NEVER commit these
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Analyzer output — large data files, generated locally
+analyzer/output/latest_data.json
+analyzer/output/signals.json
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# OS
+.DS_Store
