@@ -3,9 +3,30 @@
 import logging
 from datetime import datetime, timezone
 
+import requests
 import yfinance as yf
 
 log = logging.getLogger(__name__)
+
+TROY_OZ_TO_GRAM = 31.1035  # 1 troy oz = 31.1035 grams
+
+
+def _fetch_egypt_local_prices() -> dict | None:
+    """Fetch Egypt local gold & silver prices from goldprice.org (EGP per troy oz)."""
+    try:
+        resp = requests.get(
+            "https://data-asg.goldprice.org/dbXRates/EGP",
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=8,
+        )
+        item = resp.json()["items"][0]
+        return {
+            "gold_egp_per_gram": round(item["xauPrice"] / TROY_OZ_TO_GRAM, 2),
+            "silver_egp_per_gram": round(item["xagPrice"] / TROY_OZ_TO_GRAM, 2),
+        }
+    except Exception as e:
+        log.warning("Egypt local gold price fetch failed: %s", e)
+        return None
 
 
 def _download(tickers: list[str], period: str, interval: str) -> dict:
@@ -64,6 +85,9 @@ def fetch() -> dict | None:
     usd_egp = None
 
     try:
+        # ── Egypt local gold/silver prices ───────────────────────────────────
+        egypt_prices = _fetch_egypt_local_prices()
+
         # ── USD/EGP exchange rate ────────────────────────────────────────────
         egp_data = _download(["USDEGP=X"], "1mo", "1d")
         if "USDEGP=X" in egp_data and not egp_data["USDEGP=X"].empty:
@@ -97,12 +121,29 @@ def fetch() -> dict | None:
             price_prev = daily_raw[-2]["close"] if len(daily_raw) >= 2 else price
             change_24h = round((price - price_prev) / price_prev * 100, 2)
 
+            # Per-gram 24k calculations
+            price_per_gram_usd = round(price / TROY_OZ_TO_GRAM, 4)
+            price_per_gram_egp = round(price_per_gram_usd * usd_egp, 2) if usd_egp else None
+
+            # Egypt local price (from live fetch, or fall back to calculated)
+            is_gold = meta["symbol_out"] == "GOLD"
+            is_silver = meta["symbol_out"] == "SILVER"
+            if egypt_prices and is_gold:
+                egypt_local_per_gram = egypt_prices["gold_egp_per_gram"]
+            elif egypt_prices and is_silver:
+                egypt_local_per_gram = egypt_prices["silver_egp_per_gram"]
+            else:
+                egypt_local_per_gram = price_per_gram_egp  # fallback to calculated
+
             asset: dict = {
                 "symbol": meta["symbol_out"],
                 "ticker": ticker,
                 "name": meta["name"],
                 "price_usd": price,
                 "price_egp": round(price * usd_egp, 2) if usd_egp else None,
+                "price_per_gram_usd": price_per_gram_usd,
+                "price_per_gram_egp_fair": price_per_gram_egp,
+                "egypt_local_per_gram": egypt_local_per_gram,
                 "change_24h": change_24h,
                 "timeframes": {
                     "daily": {

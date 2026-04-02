@@ -147,6 +147,12 @@ def store_signals(signals_path: str) -> None:
             data = latest.get(market_key)
             if data and data.get("assets"):
                 save_market_data(data["assets"], market_data)
+
+        # Save USD/EGP rate as a standalone FX record
+        usd_egp = latest.get("commodities", {}).get("usd_egp")
+        if usd_egp:
+            save_market_data([{"symbol": "USDEGP", "price_usd": usd_egp}], "fx")
+
         log.info("Market data snapshots saved.")
 
 

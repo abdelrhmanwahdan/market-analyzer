@@ -55,11 +55,26 @@ def fetch() -> dict | None:
                 errors.append(f"{symbol}: batch download failed")
                 continue
 
-            # Extract per-ticker DataFrame
+            # Extract per-ticker DataFrame — handle both yfinance MultiIndex formats:
+            # Old (<0.2.50): outer=ticker, inner=field
+            # New (>=0.2.50): outer=field, inner=ticker
             try:
-                df = raw[ticker] if len(ca_tickers) > 1 else raw
-            except KeyError:
-                errors.append(f"{symbol}: not in batch result")
+                if len(ca_tickers) == 1:
+                    df = raw
+                elif hasattr(raw.columns, 'levels'):
+                    outer = raw.columns.get_level_values(0).unique().tolist()
+                    inner = raw.columns.get_level_values(-1).unique().tolist()
+                    if ticker in outer:
+                        df = raw[ticker]
+                    elif ticker in inner:
+                        df = raw.xs(ticker, level=-1, axis=1)
+                    else:
+                        errors.append(f"{symbol}: not in batch result")
+                        continue
+                else:
+                    df = raw[ticker]
+            except Exception as e:
+                errors.append(f"{symbol}: column extract failed: {e}")
                 continue
 
             if df is None or df.empty:

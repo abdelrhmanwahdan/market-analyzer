@@ -162,6 +162,9 @@ def save_market_data(assets: list[dict], market: str) -> None:
                 "key_levels": {
                     "high_20": asset.get("timeframes", {}).get("daily", {}).get("indicators", {}).get("level_high_20"),
                     "low_20": asset.get("timeframes", {}).get("daily", {}).get("indicators", {}).get("level_low_20"),
+                    "price_per_gram_usd": asset.get("price_per_gram_usd"),
+                    "price_per_gram_egp_fair": asset.get("price_per_gram_egp_fair"),
+                    "egypt_local_per_gram": asset.get("egypt_local_per_gram"),
                 },
             }
             get_client().table("market_data").insert(row).execute()
