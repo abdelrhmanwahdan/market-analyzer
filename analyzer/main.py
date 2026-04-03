@@ -50,27 +50,32 @@ async def fetch_all_data() -> dict:
     start = time.time()
     fetchers_status = {}
 
-    # Run async (crypto) and non-yfinance fetchers in parallel.
-    # yfinance fetchers (gold, us, egx) run sequentially in a single thread
-    # to avoid Yahoo Finance rate-limit conflicts from concurrent connections.
-    crypto_task = asyncio.create_task(crypto.fetch())
+    # Architecture:
+    # - crypto.fetch_meta() runs async (CoinGecko + Fear&Greed, fast, no geo-block)
+    # - ALL yfinance downloads (gold, US, EGX, crypto OHLCV) run sequentially
+    #   in a single executor thread to avoid Yahoo Finance rate-limit conflicts.
     loop = asyncio.get_event_loop()
 
+    crypto_meta_task = asyncio.create_task(crypto.fetch_meta())
+
     def run_yfinance_fetchers():
-        """Gold, US, EGX run one after another to avoid Yahoo rate limits."""
+        """All yfinance downloads run one after another — no concurrent Yahoo connections."""
         gold = gold_silver.fetch()
         us = us_market.fetch()
         egx_result = egx.fetch()
-        return gold, us, egx_result
+        # Crypto OHLCV last — after gold/US/EGX are done
+        crypto_daily, crypto_weekly = crypto.fetch_ohlcv()
+        return gold, us, egx_result, crypto_daily, crypto_weekly
 
     yf_task = loop.run_in_executor(None, run_yfinance_fetchers)
     whale_task = loop.run_in_executor(None, whale_tracker.fetch)
     news_task = loop.run_in_executor(None, news.fetch)
 
-    crypto_data = await crypto_task
-    fetchers_status["crypto"] = "ok" if crypto_data else "error"
+    crypto_meta = await crypto_meta_task
+    gold_data, us_data, egx_data, crypto_daily, crypto_weekly = await yf_task
+    crypto_data = crypto.build_result(crypto_meta, crypto_daily, crypto_weekly)
 
-    gold_data, us_data, egx_data = await yf_task
+    fetchers_status["crypto"] = "ok" if crypto_data and crypto_data.get("assets") else "error"
     fetchers_status["gold_silver"] = "ok" if gold_data else "error"
     fetchers_status["us_market"] = "ok" if us_data else "error"
     fetchers_status["egx"] = "ok" if egx_data else "error"

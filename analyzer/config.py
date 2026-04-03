@@ -16,7 +16,8 @@ NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 # ── Crypto assets to track ────────────────────────────────────────────────────
 CRYPTO_TIER1 = ["BTC", "ETH", "SOL", "BNB", "XRP"]
 CRYPTO_TIER2 = ["ADA", "AVAX", "DOGE", "DOT", "LINK", "ATOM", "UNI", "LTC", "NEAR"]
-CRYPTO_TIER3 = ["FIL", "APT", "SUI", "INJ", "SEI", "TIA", "RNDR", "FET", "AR", "OP", "ARB", "STX", "AAVE"]
+CRYPTO_TIER3 = ["FIL", "APT", "INJ", "SEI", "TIA", "FET", "AR", "OP", "ARB", "STX", "AAVE"]
+# Removed: SUI (delisted on Yahoo Finance), RNDR (delisted on Yahoo Finance)
 
 CRYPTO_ALL = CRYPTO_TIER1 + CRYPTO_TIER2 + CRYPTO_TIER3
 
@@ -38,11 +39,13 @@ SPUS_STOCKS = [
 
 # ── EGX33 Shariah Index stocks ────────────────────────────────────────────────
 EGX33_STOCKS = [
-    "SWDY", "TMGH", "ETEL", "PHDC", "ABUK", "ORWE", "MNHD", "JUFO",
-    "OCDI", "SKPC", "GBCO", "GTHE", "RAYA", "CLHO", "ISPH", "FWRY",
+    # Confirmed active on Yahoo Finance (*.CA tickers)
+    "SWDY", "TMGH", "ETEL", "PHDC", "ABUK", "ORWE", "JUFO",
+    "OCDI", "SKPC", "GBCO", "RAYA", "CLHO", "ISPH", "FWRY",
     "EGCH", "MFPC", "EGAL", "AMOC", "ACGC", "ORAS", "ORHD", "EMFD",
-    "EDFO", "OBOR", "MMGR", "RACC", "TALM", "AIIB", "FAIT", "FAIS",
-    "BAOB", "GEMM",
+    "RACC", "TALM", "FAIT",
+    # Removed (consistently delisted/unavailable on Yahoo Finance):
+    # OBOR, BAOB, MMGR, GTHE, FAIS, GEMM, AIIB, MNHD, EDFO
 ]
 
 # ── Timeframes ────────────────────────────────────────────────────────────────

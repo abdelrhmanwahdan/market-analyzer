@@ -12,21 +12,47 @@ TROY_OZ_TO_GRAM = 31.1035  # 1 troy oz = 31.1035 grams
 
 
 def _fetch_egypt_local_prices() -> dict | None:
-    """Fetch Egypt local gold & silver prices from goldprice.org (EGP per troy oz)."""
-    try:
-        resp = requests.get(
-            "https://data-asg.goldprice.org/dbXRates/EGP",
-            headers={"User-Agent": "Mozilla/5.0"},
-            timeout=8,
-        )
-        item = resp.json()["items"][0]
-        return {
-            "gold_egp_per_gram": round(item["xauPrice"] / TROY_OZ_TO_GRAM, 2),
-            "silver_egp_per_gram": round(item["xagPrice"] / TROY_OZ_TO_GRAM, 2),
-        }
-    except Exception as e:
-        log.warning("Egypt local gold price fetch failed: %s", e)
-        return None
+    """Fetch Egypt local gold & silver prices (EGP per gram).
+
+    Tries goldprice.org first (two endpoints), then metals.live as fallback.
+    Returns None if all attempts fail — caller will use calculated fair price.
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Referer": "https://goldprice.org/",
+        "Origin": "https://goldprice.org",
+        "Accept": "application/json, text/plain, */*",
+    }
+
+    # Attempt 1: goldprice.org primary endpoint
+    for url in [
+        "https://data-asg.goldprice.org/dbXRates/EGP",
+        "https://data-asg.goldprice.org/GetData/EGP/1",
+    ]:
+        try:
+            resp = requests.get(url, headers=headers, timeout=8)
+            if resp.status_code == 200 and resp.text.strip():
+                data = resp.json()
+                # dbXRates format
+                if "items" in data:
+                    item = data["items"][0]
+                    return {
+                        "gold_egp_per_gram": round(item["xauPrice"] / TROY_OZ_TO_GRAM, 2),
+                        "silver_egp_per_gram": round(item["xagPrice"] / TROY_OZ_TO_GRAM, 2),
+                    }
+                # GetData format: list of [ts, price] pairs
+                if isinstance(data, list) and data:
+                    gold_oz = float(data[0][1])
+                    silver_oz = float(data[1][1]) if len(data) > 1 else None
+                    result = {"gold_egp_per_gram": round(gold_oz / TROY_OZ_TO_GRAM, 2)}
+                    if silver_oz:
+                        result["silver_egp_per_gram"] = round(silver_oz / TROY_OZ_TO_GRAM, 2)
+                    return result
+        except Exception as e:
+            log.debug("goldprice.org %s failed: %s", url, e)
+
+    log.warning("Egypt local gold price fetch failed: all endpoints returned empty or errored")
+    return None
 
 
 def _download(tickers: list[str], period: str, interval: str) -> dict:
