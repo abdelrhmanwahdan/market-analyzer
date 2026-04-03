@@ -47,23 +47,75 @@ def save_analysis(analysis: dict) -> str | None:
 # ── Signals ───────────────────────────────────────────────────────────────────
 
 def save_signals(signals: list[dict], analysis_id: str | None = None) -> list[str]:
-    """Insert signals. Returns list of inserted UUIDs."""
+    """Insert signals, skipping duplicates for assets that already have an active signal.
+
+    A signal is considered a duplicate if there is already an ACTIVE signal for
+    the same asset with the same stop_loss. If the stop_loss has changed (e.g.,
+    trailing stop update), the existing signal is updated instead of duplicated.
+    """
     if not signals:
         return []
+
+    # Fetch all currently active signals once (avoid N queries)
+    try:
+        active_resp = (
+            get_client().table("signals")
+            .select("id, asset, type, stop_loss")
+            .eq("status", "ACTIVE")
+            .execute()
+        )
+        active = {(r["asset"], r["type"]): r for r in (active_resp.data or [])}
+    except Exception as e:
+        log.warning("Could not fetch active signals for dedup check: %s", e)
+        active = {}
+
     saved_ids = []
     for sig in signals:
+        asset = sig.get("asset")
+        sig_type = sig.get("type")
+        new_stop = sig.get("stop_loss")
+        key = (asset, sig_type)
+
         try:
+            existing = active.get(key)
+
+            if existing:
+                existing_stop = existing.get("stop_loss")
+                if existing_stop == new_stop:
+                    # Exact same signal already active — skip entirely
+                    log.info(
+                        "Skipping duplicate signal: %s %s already ACTIVE with same stop (%.2f)",
+                        sig_type, asset, new_stop or 0,
+                    )
+                    saved_ids.append(existing["id"])
+                    continue
+                else:
+                    # Stop loss changed (trailing stop update) — update in place
+                    log.info(
+                        "Updating %s %s stop: %.2f → %.2f",
+                        sig_type, asset, existing_stop or 0, new_stop or 0,
+                    )
+                    get_client().table("signals").update({
+                        "stop_loss": new_stop,
+                        "analysis_id": analysis_id,
+                        "current_price": sig.get("current_price"),
+                        "reasoning": sig.get("reasoning", ""),
+                    }).eq("id", existing["id"]).execute()
+                    saved_ids.append(existing["id"])
+                    continue
+
+            # No existing active signal — insert fresh
             row = {
                 "analysis_id": analysis_id,
-                "type": sig.get("type"),
-                "asset": sig.get("asset"),
-                "asset_name": sig.get("asset_name", sig.get("asset")),
+                "type": sig_type,
+                "asset": asset,
+                "asset_name": sig.get("asset_name", asset),
                 "market": sig.get("market"),
                 "shariah_status": sig.get("shariah_status", "COMPLIANT"),
                 "current_price": sig.get("current_price"),
                 "entry_zone_low": sig.get("entry_zone", {}).get("low") if sig.get("entry_zone") else None,
                 "entry_zone_high": sig.get("entry_zone", {}).get("high") if sig.get("entry_zone") else None,
-                "stop_loss": sig.get("stop_loss"),
+                "stop_loss": new_stop,
                 "take_profit_1": sig.get("take_profit_1"),
                 "take_profit_2": sig.get("take_profit_2"),
                 "take_profit_3": sig.get("take_profit_3"),
@@ -86,8 +138,9 @@ def save_signals(signals: list[dict], analysis_id: str | None = None) -> list[st
             resp = get_client().table("signals").insert(row).execute()
             if resp.data:
                 saved_ids.append(resp.data[0]["id"])
+                log.info("New signal saved: %s %s", sig_type, asset)
         except Exception as e:
-            log.error("save_signal failed (%s): %s", sig.get("asset"), e)
+            log.error("save_signal failed (%s): %s", asset, e)
     return saved_ids
 
 
